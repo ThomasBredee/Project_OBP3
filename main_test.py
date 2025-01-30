@@ -34,7 +34,7 @@ if __name__ == "__main__":
 
     ###get the data
     input_df = pd.read_csv(path)
-    check_road_proximity = True #Set true if OSRM container running
+    check_road_proximity = False #Set true if OSRM container running
     transformer = TransformInput(check_road_proximity=check_road_proximity)
     input_df_kmeans = transformer.drop_duplicates(input_df)
     input_df_modified = transformer.execute_validations(input_df)
@@ -42,7 +42,7 @@ if __name__ == "__main__":
     ##########Get partial distance matrix
     ###get distance matrix from chosen company to itself and all other locations in the input df
     distance_calc = RoadDistanceCalculator()
-    distance_matrix_ranking = distance_calc.calculate_distance_matrix(input_df_modified, chosen_company=CHOSEN_COMPANY, method="osrm")
+    distance_matrix_ranking = distance_calc.calculate_distance_matrix(input_df_modified, chosen_company=CHOSEN_COMPANY, method="haversine")
 
     ##########Get ranking
     ###get distance matrix squared (for kmeans)
@@ -58,22 +58,22 @@ if __name__ == "__main__":
     ###get candidate ranking methods (machine learning) / get predicted kilometers per order (For Greedy)
     #preprare data
     input_df_modified_with_depot = distance_calc.add_depot(input_df_modified, LAT_DEPOT, LONG_DEPOT)
-    prepper = PrepareInput()
-    prediction_df = prepper.prep_greedy(input_df_modified_with_depot, CHOSEN_COMPANY, greedy_ranking.index, "haversine", distance_matrix_ranking,
-                                           TRUCK_CAPACITY, greedy_ranking)
-    #get pre-trained model
-    path = "Machine_Learning_Train/osrm/TrainedModels/RF/"
-    scaler = joblib.load(f"{path}scaler_greedy_osrm.pkl")
-    model = joblib.load(f"{path}random_forest_model_greedy_osrm.pkl")
-    predictor = ModelPredictor(model,scaler)
+    # prepper = PrepareInput()
+    # prediction_df = prepper.prep_greedy(input_df_modified_with_depot, CHOSEN_COMPANY, greedy_ranking.index, "haversine", distance_matrix_ranking,
+    #                                        TRUCK_CAPACITY, greedy_ranking)
+    # #get pre-trained model
+    # path = "Machine_Learning_Train/osrm/TrainedModels/RF/"
+    # scaler = joblib.load(f"{path}scaler_greedy_osrm.pkl")
+    # model = joblib.load(f"{path}random_forest_model_greedy_osrm.pkl")
+    # predictor = ModelPredictor(model,scaler)
 
     #make prediction and get ranking
-    predicted_df = predictor.predict_for_candidates(prediction_df)
+    # predicted_df = predictor.predict_for_candidates(prediction_df)
 
     ##########Get full distance matrix
     ###get the full distance matrix of best company
     distance_matrix_vrp= distance_calc.calculate_distance_matrix(input_df_modified_with_depot, chosen_company=CHOSEN_COMPANY,
-        candidate_name=CHOSEN_CANDIDATE, method="osrm", computed_distances_df=distance_matrix_ranking)
+        candidate_name=CHOSEN_CANDIDATE, method="haversine", computed_distances_df=distance_matrix_ranking)
 
     ###get best route
     vrp_solver = VRPSolver()
@@ -104,7 +104,7 @@ if __name__ == "__main__":
     vrp_solver.plotRoute(routes_single, input_df_modified_with_depot)
 
     ###get expected gain
-    predicted_df['Expected Gain'] = avg_distance_per_order_single - predicted_df['Predicted km per order']
+    # predicted_df['Expected Gain'] = avg_distance_per_order_single - predicted_df['Predicted km per order']
 
     ##########Solve VRP collaboration
     # --- Collaboration ---
