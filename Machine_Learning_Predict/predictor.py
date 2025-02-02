@@ -9,16 +9,14 @@
 #########################################################
 import numpy as np
 import joblib
+import xgboost as xgb
 
 class ModelPredictor:
-    def __init__(self, model_path, scaler_path):
-        """
-        Initialize the predictor class by loading the model and scaler from specified paths.
-        :param model_path: Path to the saved model file (.pkl)
-        :param scaler_path: Path to the saved scaler file (.pkl)
-        """
-        self.model = joblib.load(model_path)
-        self.scaler = joblib.load(scaler_path)
+    def __init__(self, model_file, scaler_file):
+        # Load the XGBoost model directly if saved as a .model file
+        self.model = xgb.Booster()
+        self.model.load_model(model_file)  # Assuming the model was saved with XGBoost's save_model
+        self.scaler = joblib.load(scaler_file)
 
     def predict(self, input_data):
         """
@@ -37,7 +35,10 @@ class ModelPredictor:
         # Scale the features using the loaded scaler
         scaled_data = self.scaler.transform(input_data)
 
+        # Convert scaled data to DMatrix before prediction
+        dmatrix_data = xgb.DMatrix(scaled_data)
+
         # Make predictions using the scaled data
-        predictions = self.model.predict(scaled_data)
+        predictions = self.model.predict(dmatrix_data)
 
         return predictions
