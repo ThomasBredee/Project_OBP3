@@ -1,0 +1,24 @@
+2025-02-02 21:30:02,730 - INFO -   Do validation and transformation on input data completed in 1.6954 seconds
+2025-02-02 21:30:02,731 - INFO - Get data for variable path completed in 1.6998 seconds
+2025-02-02 21:30:03,330 - INFO - Get partial distance matrix completed in 0.5978 seconds
+2025-02-02 21:30:03,379 - INFO -   Calculate full matrix for k-means completed in 0.0491 seconds
+2025-02-02 21:30:03,379 - INFO -   Initialize ranking completed in 0.0000 seconds
+2025-02-02 21:30:03,381 - INFO -   Calculate greedy ranking completed in 0.0024 seconds
+2025-02-02 21:30:03,410 - INFO -   Calculate circle box ranking completed in 0.0290 seconds
+2025-02-02 21:30:08,002 - INFO -   Calculate k-means ranking completed in 4.5918 seconds
+2025-02-02 21:30:08,002 - INFO - Get ranking completed in 4.6723 seconds
+2025-02-02 21:30:08,003 - INFO -   Initialize data preparation module completed in 0.0010 seconds
+2025-02-02 21:30:33,353 - INFO -   Get data to predict on Greedy completed in 25.3496 seconds
+2025-02-02 21:30:34,695 - INFO -   Make predictions Greedy ML completed in 1.3418 seconds
+2025-02-02 21:30:59,222 - INFO -   Get data to predict on Bounding Circle completed in 24.5269 seconds
+2025-02-02 21:30:59,340 - INFO -   Make predictions Bounding Circle completed in 0.1179 seconds
+2025-02-02 21:39:00,149 - INFO -   Get data to predict on K-Means completed in 480.8075 seconds
+2025-02-02 21:39:00,296 - INFO -   Make predictions K_Means completed in 0.1463 seconds
+2025-02-02 21:40:41,223 - INFO -   Get data to predict on DBScan completed in 100.9257 seconds
+2025-02-02 21:40:41,225 - INFO -   Make predictions DBScan completed in 0.0010 seconds
+2025-02-02 21:52:10,748 - INFO -   Get data to predict on Main ML Algorithm completed in 689.5236 seconds
+2025-02-02 21:52:10,827 - INFO -   Make predictions Main ML Algorithm completed in 0.0785 seconds
+2025-02-02 21:52:10,828 - INFO - Get candidate ranking (machine learning) completed in 1322.8250 seconds
+2025-02-02 21:52:11,756 - INFO - Get full distance matrix completed in 0.9284 seconds
+2025-02-02 21:52:13,770 - INFO - Solve VRP for single company completed in 2.0125 seconds
+2025-02-02 21:52:15,799 - INFO - Solve VRP collaboration completed in 2.0288 seconds

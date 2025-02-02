@@ -1,0 +1,24 @@
+2025-02-02 21:04:01,183 - INFO -   Do validation and transformation on input data completed in 1.4959 seconds
+2025-02-02 21:04:01,184 - INFO - Get data for variable path completed in 1.5010 seconds
+2025-02-02 21:04:40,892 - INFO - Get partial distance matrix completed in 39.7087 seconds
+2025-02-02 21:04:40,930 - INFO -   Calculate full matrix for k-means completed in 0.0380 seconds
+2025-02-02 21:04:40,930 - INFO -   Initialize ranking completed in 0.0000 seconds
+2025-02-02 21:04:40,935 - INFO -   Calculate greedy ranking completed in 0.0050 seconds
+2025-02-02 21:04:40,970 - INFO -   Calculate circle box ranking completed in 0.0257 seconds
+2025-02-02 21:04:44,942 - INFO -   Calculate k-means ranking completed in 3.9721 seconds
+2025-02-02 21:04:44,943 - INFO - Get ranking completed in 4.0503 seconds
+2025-02-02 21:04:44,943 - INFO -   Initialize data preparation module completed in 0.0000 seconds
+2025-02-02 21:07:49,617 - INFO -   Get data to predict on Greedy completed in 184.6736 seconds
+2025-02-02 21:07:49,856 - INFO -   Make predictions Greedy ML completed in 0.2378 seconds
+2025-02-02 21:10:46,642 - INFO -   Get data to predict on Bounding Circle completed in 176.7862 seconds
+2025-02-02 21:10:46,696 - INFO -   Make predictions Bounding Circle completed in 0.0535 seconds
+2025-02-02 21:20:00,361 - INFO -   Get data to predict on K-Means completed in 553.6650 seconds
+2025-02-02 21:20:00,406 - INFO -   Make predictions K_Means completed in 0.0445 seconds
+2025-02-02 21:23:46,069 - INFO -   Get data to predict on DBScan completed in 225.6639 seconds
+2025-02-02 21:23:46,070 - INFO -   Make predictions DBScan completed in 0.0000 seconds
+2025-02-02 21:34:03,541 - INFO -   Get data to predict on Main ML Algorithm completed in 617.4708 seconds
+2025-02-02 21:34:03,593 - INFO -   Make predictions Main ML Algorithm completed in 0.0519 seconds
+2025-02-02 21:34:03,594 - INFO - Get candidate ranking (machine learning) completed in 1758.6509 seconds
+2025-02-02 21:34:14,374 - INFO - Get full distance matrix completed in 10.7794 seconds
+2025-02-02 21:34:16,381 - INFO - Solve VRP for single company completed in 2.0076 seconds
+2025-02-02 21:34:18,417 - INFO - Solve VRP collaboration completed in 2.0349 seconds
