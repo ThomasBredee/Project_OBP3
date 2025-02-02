@@ -1,4 +1,4 @@
-#########################################################
+########################################################
 #                                                       #
 # Created on: 17/01/2025                                #
 # Created by: Dennis Botman                             #
@@ -20,7 +20,7 @@ import pandas as pd
 LONG_DEPOT = 5.26860985
 LAT_DEPOT = 52.2517788
 METHOD = "osrm"
-FILE_SIZE = "medium"
+FILE_SIZE = "mini"
 RUN_TIME = 1
 output_filename = f"VRP_results_{METHOD}_{FILE_SIZE}.xlsx"
 

@@ -98,3 +98,13 @@ class TransformInput:
         """Add an underscore and a count suffix to duplicate names."""
         df['name'] = df.groupby('name').cumcount().add(1).astype(str).radd(df['name'] + "_")
         return df
+
+    def _slice_df(self, df1, df2):
+        unique_names = df1['name'].unique()
+
+        # Filter rows in df2 where the index matches unique names
+        filtered_rows = df2.loc[df2.index.isin(unique_names)]
+
+        # Filter columns in df2 where the column names match unique names
+        filtered_df2 = filtered_rows.loc[:, filtered_rows.columns.isin(unique_names)]
+        return filtered_df2

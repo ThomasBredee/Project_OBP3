@@ -3,6 +3,9 @@
 # Created on: 14/01/2025                                #
 # Created by: Thomas                                    #
 #                                                       #
+# Created on: 31/01/2025                                #
+# Created by: Thomas                                    #
+#                                                       #
 #########################################################
 
 import streamlit as st
@@ -14,9 +17,17 @@ from st_aggrid import AgGrid, GridOptionsBuilder
 from Dashboard.gridbuilder import PINLEFT, PRECISION_THREE, draw_grid
 from Input_Transformation.transforming_input import TransformInput
 import pandas as pd
+from Candidate_Ranking.ranking_methods import CandidateRanking
+from Machine_Learning_Predict.predictor import ModelPredictor
+from Machine_Learning_Predict.prepare_input import PrepareInput
 import joblib
-
+import random
 import time
+import numpy as np
+
+from VRP_Solver.solver_pyvrp import VRPSolver
+from VRP_Solver.distance_calculator import RoadDistanceCalculator
+
 warnings.filterwarnings('ignore')
 
 
@@ -87,6 +98,7 @@ class Dashboard:
         else:
             st.session_state.input_df = None
 
+        self.prepare_input = PrepareInput()
         #print("Processing file took {} seconds".format(time.time() - start_time))
 
     def _process_file(self, fl):
@@ -99,7 +111,7 @@ class Dashboard:
             st.error("Unsupported file type!")
             st.stop()
 
-        check_road_proximity = False  # Set true if OSRM container running
+        check_road_proximity = True  # Set true if OSRM container running
         transformer = TransformInput(check_road_proximity=check_road_proximity)
         st.session_state.input_df_kmeans = transformer.drop_duplicates(st.session_state.input_df)
         st.session_state.input_df_modified = transformer.execute_validations(st.session_state.input_df)
@@ -108,11 +120,10 @@ class Dashboard:
 
         st.sidebar.header("Choose your filter: ")
         filters = list(st.session_state.input_df["name"].unique())
-        company = st.sidebar.selectbox("Pick your Company:", filters) #key='company')
+        company = st.sidebar.selectbox("Pick your Company:", filters, key="company_select")
         if company != st.session_state.company_1:
             st.session_state.company_1 = company
-            st.session_state.update1 = True
-            st.session_state.update2 = True
+            self.reset_right_panel()  # Reset right panel when company changes
 
         # Use a number input for vehicle capacity with no maximum value
         VC = st.sidebar.number_input(
@@ -128,12 +139,27 @@ class Dashboard:
             st.session_state.update1 = True
             st.session_state.update2 = True
 
+        if VC != st.session_state.vehicle_capacity:
+            st.session_state.vehicle_capacity = VC
+            self.reset_right_panel()  # Reset right panel when capacity changes
+
         heuristics = list(["greedy", "bounding_circle", "k_means", "dbscan", "machine_learning"])
         heuristic = st.sidebar.selectbox("Pick your Heuristic:", heuristics)#, key='heuristics_choice')
         if heuristic != st.session_state.heuristic:
             st.session_state.heuristic = heuristic
             st.session_state.update1 = True
             st.session_state.update2 = True
+        if heuristic != st.session_state.heuristic:
+            st.session_state.heuristic = heuristic
+            self.reset_right_panel()  # Reset right panel when heuristic changes
+
+        if st.session_state.heuristic == "dbscan":
+            st.sidebar.write('<div style="text-align: center; color: red; font-style: italic;">'
+                             'Make sure to use a big input file, (>= many.csv) <br>'
+                             '<br>'
+                             '</div>',
+                             unsafe_allow_html=True
+                             )
 
         distance_choices = list(["haversine", "osrm"])
         distance = st.sidebar.selectbox("Pick your Distance:", distance_choices)#, key='distance_choice')
@@ -141,33 +167,28 @@ class Dashboard:
             st.session_state.distance = distance
             st.session_state.update1 = True
             st.session_state.update2 = True
+            self.reset_right_panel()
 
-        print(st.session_state.ml_choice)
-        if st.session_state.ml_choice:
-            reads = "Do you want to employ Machine Learning?  (Warning: takes extra time):"
-            print(reads)
+        if st.session_state.heuristic != "machine_learning":
+            ml = st.sidebar.selectbox(
+                "Do you want to employ Machine Learning?",
+                ("False", "True")
+            )
+            ml_save = ml == "True"
+            if ml_save != st.session_state.ml_choice:
+                st.session_state.ml_choice = ml == "True"
+                st.session_state.update1 = True
+                st.session_state.update2 = True
+
+            if st.session_state.ml_choice:
+                st.sidebar.write('<div style="text-align: center; color: red; font-style: italic;">'
+                                'Takes extra time <br>'
+                                '<br>'
+                                '</div>',
+                                unsafe_allow_html=True
+                             )
         else:
-            reads = "Do you want to employ Machine Learning?:"
-            print(reads)
-
-        # def _update_radio(selection):
-        #     st.session_state.radio_selection = selection
-
-        #print(st.session_state.ml_choice)
-        ml = st.sidebar.selectbox(
-            reads,#"Do you want to employ Machine Learning? (Warning: takes extra time)" if st.session_state.ml_choice else "Do you want to employ Machine Learning?:",
-            ("True", "False")
-            # index=0 if st.session_state.ml_choice == True else 1,
-            # horizontal=True,
-            # on_change=_update_radio,
-            # args=(st.session_state.ml_choice,),
-        )
-        if ml != st.session_state.ml_choice:
-            st.session_state.ml_choice = ml == "True"
-            st.session_state.update1 = True
-            st.session_state.update2 = True
-            st.experimental_rerun()
-        print(st.session_state.ml_choice)
+            st.session_state.ml_choice = True
 
         if st.sidebar.button("Get Ranking"):
             st.session_state.update1 = False
@@ -176,22 +197,130 @@ class Dashboard:
             st.session_state.show_Ranking = True
             st.session_state.display_VRP = False
 
+    def _ranking_using_machine_learning(self, ranking):
+        temp_ranker = CandidateRanking()
+        vrp_solver = VRPSolver()
+        #distance_calc = RoadDistanceCalculator()
+        if st.session_state.ml_choice:
+            CHOSEN_CANDIDATES = \
+            st.session_state.input_df[st.session_state.input_df["name"] != st.session_state.company_1]["name"].unique()
+        else:
+            CHOSEN_CANDIDATES = [st.session_state.selected_candidate]
+
+        heuristic = st.session_state.heuristic
+        if heuristic == "greedy":
+            data_to_predict_on, distance_matrix_vrp = self.prepare_input.prep_greedy(
+                st.session_state.input_df_modified_with_depot,
+                st.session_state.company_1,
+                CHOSEN_CANDIDATES,
+                st.session_state.distance,
+                st.session_state.distance_matrix_ranking,
+                st.session_state.vehicle_capacity,
+                ranking
+            )
+        elif heuristic == "bounding_circle":
+
+            ranking = ranking.rename(columns={'Total Distance': 'Percentage Overlap'})
+            data_to_predict_on, distance_matrix_vrp = self.prepare_input.prep_bounding_circle(
+                st.session_state.input_df,
+                st.session_state.input_df_modified_with_depot,
+                st.session_state.distance_matrix_ranking,
+                st.session_state.vehicle_capacity,
+                st.session_state.company_1,
+                CHOSEN_CANDIDATES,
+                st.session_state.distance,
+                ranking
+            )
+        elif heuristic == "k_means":
+            distance_calc = RoadDistanceCalculator()
+            ranking = ranking.rename(columns={'Total Distance': 'Percentage Overlap'})
+            data_to_predict_on, distance_matrix_vrp = self.prepare_input.prep_k_means(
+                st.session_state.input_df_clustering,
+                st.session_state.input_df_modified,
+                st.session_state.distance_matrix_ranking,
+                st.session_state.full_matrix,
+                st.session_state.vehicle_capacity,
+                st.session_state.company_1,
+                CHOSEN_CANDIDATES,
+                st.session_state.distance,
+                ranking
+            )
+
+            distance_matrix_vrp = distance_calc.calculate_distance_matrix(st.session_state.input_df_modified_with_depot,
+                                                                          chosen_company=st.session_state.company_1,
+                                                                          candidate_name=CHOSEN_CANDIDATES[0],
+                                                                          method=st.session_state.distance ,
+                                                                          computed_distances_df=st.session_state.distance_matrix_ranking)
+
+        elif heuristic == "dbscan":
+            ranking = ranking.rename(columns={'Total Distance': 'Percentage'})
+            data_to_predict_on, distance_matrix_vrp = self.prepare_input.prep_dbscan(
+                st.session_state.input_df_clustering,
+                st.session_state.input_df_modified_with_depot,
+                st.session_state.distance_matrix_ranking,
+                st.session_state.full_matrix,
+                st.session_state.vehicle_capacity,
+                st.session_state.company_1,
+                CHOSEN_CANDIDATES,
+                st.session_state.distance,
+                ranking
+            )
+
+
+        if heuristic != "machine_learning":
+
+            distance_matrix_vrp = distance_matrix_vrp[~distance_matrix_vrp.index.str.contains('|'.join(CHOSEN_CANDIDATES), case=False, na=False)]
+
+            # Drop columns where the column name contains any string in CHOSEN_CANDIDATES
+            distance_matrix_vrp = distance_matrix_vrp.loc[:, ~distance_matrix_vrp.columns.str.contains('|'.join(CHOSEN_CANDIDATES), case=False, na=False)]
+
+            model_single, current_names_single = vrp_solver.build_model(
+                input_df=st.session_state.input_df_modified_with_depot,
+                chosen_company=st.session_state.company_1,
+                distance_matrix=distance_matrix_vrp,
+                truck_capacity=st.session_state.vehicle_capacity,
+            )
+
+            solution_single, routes_single = vrp_solver.solve(
+                model=model_single,
+                max_runtime=1,
+                display=False,
+                current_names=current_names_single,
+                print_routes=True
+            )
+            total_distance_single, avg_distance_per_order_single = vrp_solver.calculate_distance_per_order(
+                routes=routes_single,
+                distance_matrix=distance_matrix_vrp
+            )
+
+            prediction_feats = data_to_predict_on.drop(columns=["chosen_candidate"]).columns
+            path = f"Machine_Learning_Train/{st.session_state.distance}/TrainedModels/XGBoost/"
+            model_file = f"{path}xgboost_booster_{st.session_state.distance}_{st.session_state.heuristic}.model"
+            scaler_file = f"{path}scaler_{st.session_state.distance}_{st.session_state.heuristic}.pkl"
+            predictor = ModelPredictor(model_file, scaler_file)
+
+        if st.session_state.ml_choice:
+            return "Machine Leanring"
+        else:
+            if heuristic == "k_means" or heuristic == "dbscan": #Because of different scaling clusterin algos
+                return max(1.0, np.ceil(avg_distance_per_order_single -  predictor.predict(data_to_predict_on[prediction_feats])[0]))
+            else:
+                return max(1.0, np.ceil(avg_distance_per_order_single - predictor.predict(data_to_predict_on[prediction_feats])[0]))
+
     def display_ranking(self):
-
         st.write("### Potential Candidates")
-        top3_candidates = st.session_state.ranking.index.unique()[:3]
 
-        #TODO: TO LATER REMOVE, NOW JUST FOR CHECK
-        #st.write(st.session_state.ranking.reset_index())
-
-        # Display candidates in the middle
         col1, col2, col3, col4 = st.columns([1.8, 0.2, 1.5, 1])
         with col1:
-            formatter = {'Company': ('Company', {**PINLEFT, 'width': 150}),
-                         #'Total Distance': ('Total Distance (Meters)', {**PRECISION_THREE, 'width': 200}),
-                         }
-
-            # st.write(st.session_state.ranking)
+            if st.session_state.ml_choice:
+                formatter = {
+                    'Company': ('Company', {'pinned': 'left', 'width': 150}),
+                    'Total Distance': ('Total Distance (Meters)',
+                                       {'type': ['numericColumn', 'customNumericFormat'], 'precision': 3,
+                                        'width': 200}),
+                }
+            else:
+                formatter = {'Company': ('Company', {'pinned': 'left', 'width': 150})}
 
             st.session_state.df_display = st.session_state.ranking.reset_index()
             st.session_state.df_display.rename(columns={'index': 'Company'}, inplace=True)
@@ -201,59 +330,47 @@ class Dashboard:
                 st.session_state.df_display.head(st.session_state.row_number),
                 formatter=formatter,
                 fit_columns=True,
-                selection='single',  # or 'single', or None
-                use_checkbox='True',  # or False by default
+                selection='single',
+                use_checkbox=True,
                 max_height=300
             )
 
-            #print(st.session_state.data["selected_rows"])
+            # Debugging - Print Selected Rows
+            selected_rows = st.session_state.data1.get("selected_rows", pd.DataFrame())
 
-            #if st.session_state.data1["selected_rows"] == st.session_state.data2["selected_rows"]:
+            # Ensure selected_rows is a valid DataFrame and not empty
+            if isinstance(selected_rows, pd.DataFrame) and not selected_rows.empty:
+                new_candidate = selected_rows.iloc[0]['Company']
 
-            # st.write(st.session_state.data1["selected_rows"])
-
-            if st.session_state.data1["selected_rows"] is not None:
-                inbetween_save = st.session_state.data1["selected_rows"].iloc[0]['Company']
-
-                if inbetween_save != st.session_state.selected_candidate:
-                    st.session_state.selected_candidate = inbetween_save
+                # Only update if the selected candidate has changed
+                if new_candidate != st.session_state.selected_candidate:
+                    st.session_state.selected_candidate = new_candidate
                     st.session_state.update2 = True
 
-        with col2:
-            st.write("<br>", unsafe_allow_html=True)
+        previous_candidate = st.session_state.get("previous_candidate", None)
 
+        if (
+                "selected_candidate" in st.session_state
+                and st.session_state.selected_candidate
+                and st.session_state.selected_candidate != previous_candidate
+        ):
+            st.session_state.expected_gain = self._ranking_using_machine_learning(st.session_state.ranking)
+            st.session_state.previous_candidate = st.session_state.selected_candidate
+
+        # Render expected gain if available
         with col3:
-            EXPECTED_GAIN = 100
-            st.write("<br>", unsafe_allow_html=True)
-            if st.session_state.selected_candidate is not None:
-                st.write("The Expected gain for", f"**{st.session_state.selected_candidate}**", "is:", "<br>", EXPECTED_GAIN, "kilometers", unsafe_allow_html=True)
+            if not st.session_state.ml_choice:  # Ensure ML is False before showing expected gain
+                if "expected_gain" in st.session_state and st.session_state.selected_candidate:
+                    st.write(f"The Expected gain for {st.session_state.selected_candidate} is:",
+                             st.session_state.expected_gain, "kilometers per order")
 
+        # Solve VRP button
         with col4:
-            st.markdown("<br><br>", unsafe_allow_html=True)
-            if st.session_state.selected_candidate is not None:
+            if st.session_state.selected_candidate:
                 if col4.button("Solve VRP"):
-                    #self.solve_vrp()
                     st.session_state.execute_VRP = True
                     st.session_state.update2 = False
                     st.session_state.firsttime2 = False
-
-            # Use the radio button to directly update the selected candidate in session state
-            # selected_candidate = st.selectbox("Select a Candidate:", st.session_state.ranking.index.unique()) #top3_candidates)
-            # if selected_candidate != st.session_state.selected_candidate:
-            #     st.session_state.selected_candidate = selected_candidate
-            #     st.session_state.update2 = True
-            #
-            # if st.session_state.update2 and st.session_state.firsttime2 == False:
-            #     st.write('<div style="text-align: left; color: red; font-weight: bold; font-style: italic;">'
-            #                 'Not up-to-date! <br>'
-            #                 'Recalculate VRP. <br>'
-            #                 '<br>'
-            #                 '</div>',
-            #                 unsafe_allow_html=True
-            #              )
-
-
-
 
     def download(self, type="ranking"):
         if type == "ranking":
@@ -389,4 +506,15 @@ class Dashboard:
         }
         for key, default in defaults.items():
             st.session_state[key] = default
+
+    def reset_right_panel(self):
+        """Reset the right panel when the left column changes."""
+        st.session_state.show_Ranking = False
+        st.session_state.show_VRP = False
+        st.session_state.selected_candidate = None
+        st.session_state.expected_gain = None
+        st.session_state.ranking = None
+        st.session_state.solution_collab = None
+        st.session_state.routes_collab = None
+
 

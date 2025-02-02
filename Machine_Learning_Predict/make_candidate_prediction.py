@@ -1,4 +1,3 @@
-<<<<<<< HEAD
 #########################################################
 #                                                       #
 # Created on: 22/01/2025                                #
@@ -48,7 +47,7 @@ class ModelPredictor:
         df_sorted = prediction_df.sort_values(by='Predicted km per order')
 
         return df_sorted
-=======
+
 #########################################################
 #                                                       #
 # Created on: 22/01/2025                                #
@@ -98,4 +97,3 @@ class ModelPredictor:
         df_sorted = prediction_df.sort_values(by='Predicted km per order')
 
         return df_sorted
->>>>>>> 995f455a1d37e0b2f24f53d70f716ae0df4c79b8

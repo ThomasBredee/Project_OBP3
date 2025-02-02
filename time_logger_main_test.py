@@ -3,7 +3,7 @@
 # Created on: 11/01/2025                                #
 # Created by: Dennis Botman                             #
 #                                                       #
-# Updated on: 23/01/2025                                #
+# Updated on: 02/02/2025                                #
 # Updated by: Dennis Botman                             #
 #                                                       #
 #########################################################
@@ -14,14 +14,14 @@ import time
 from VRP_Solver.distance_calculator import RoadDistanceCalculator
 from VRP_Solver.solver_pyvrp import VRPSolver
 from Candidate_Ranking.ranking_methods import CandidateRanking
-from Machine_Learning_Predict.make_prediction import ModelPredictor
 from Machine_Learning_Predict.prepare_input import PrepareInput
+from Input_Transformation.transforming_input import TransformInput
+from Machine_Learning_Predict.predictor import ModelPredictor
 import pandas as pd
-import joblib
 
 # Configure logging to clear the log file each time
 logging.basicConfig(
-    filename='timer_log_main_test_Algorithms_pkg_osrm_manyLarge.log',
+    filename='timer_log_main_operations_haversine_manyLarge.log',
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     filemode='w'  # Open the file in write mode
@@ -37,27 +37,33 @@ def log_substep(substep_name, start_time):
     logging.info(f'  {substep_name} completed in {execution_time:.4f} seconds')
 
 
-####### INPUTS FOR MODEL FOR MAIN TEST
+####### INPUTS FOR MODEL FOR MAIN TEST #
 TRUCK_CAPACITY = 10
 CHOSEN_COMPANY = "Dynamic Group"
 CHOSEN_CANDIDATE = "Elite Group"
 LONG_DEPOT = 5.26860985
 LAT_DEPOT = 52.2517788
+METHOD = "haversine"
 
 if __name__ == "__main__":
     ########## Get data for variable path (many)
     start_time = time.time()
     path = "Data/manyLarge.csv"
     input_df = pd.read_csv(path)
-    input_df_modified = input_df.copy()
-    input_df_modified['name'] = input_df.groupby('name').cumcount().add(1).astype(str).radd(input_df['name'] + "_")
+    substep_time = time.time()
+    check_road_proximity = True  # Set true if OSRM container running
+    transformer = TransformInput(check_road_proximity=check_road_proximity)
+    input_df_modified = transformer.execute_validations(input_df)
+    log_substep("Do validation and transformation on input data", substep_time)
+    input_df_clustering = transformer.drop_duplicates(input_df)
     log_step("Get data for variable path", start_time)
 
+    CHOSEN_CANDIDATES = input_df[input_df["name"]!=CHOSEN_COMPANY]["name"].unique()
     ########## Get partial distance matrix
     start_time = time.time()
     distance_calc = RoadDistanceCalculator()
     distance_matrix_ranking = distance_calc.calculate_distance_matrix(input_df_modified, chosen_company=CHOSEN_COMPANY,
-                                                                      method="osrm")
+                                                                      method=METHOD)
     log_step("Get partial distance matrix", start_time)
 
     ########## Get ranking
@@ -85,7 +91,7 @@ if __name__ == "__main__":
 
     substep_time = time.time()
     # SUBSTEP Get k-means ranking
-    k_means_ranking = ranking.k_means(input_df, input_df_modified, full_matrix, CHOSEN_COMPANY)
+    k_means_ranking = ranking.k_means(input_df_clustering, input_df_modified, full_matrix, CHOSEN_COMPANY)
     log_substep("Calculate k-means ranking", substep_time)
 
     log_step("Get ranking", start_time)
@@ -100,23 +106,131 @@ if __name__ == "__main__":
     log_substep("Initialize data preparation module", substep_time)
 
     substep_time = time.time()
-    # SUBSTEP Create features to predict from input
-    prediction_df = prepper.prep_greedy(input_df_modified_with_depot, CHOSEN_COMPANY, greedy_ranking.index, "osrm",
-                                        distance_matrix_ranking, TRUCK_CAPACITY, greedy_ranking)
-    log_substep("Create features for prediction", substep_time)
-
-    substep_time = time.time()
     # SUBSTEP Get prediction model rf
-    path = "Machine_Learning_Train/osrm/TrainedModels/RF/"
-    scaler = joblib.load(f"{path}scaler_greedy_osrm.pkl")
-    model = joblib.load(f"{path}random_forest_model_greedy_osrm.pkl")
-    predictor = ModelPredictor(model, scaler)
-    log_substep("Load prediction model and scaler", substep_time)
+    RANKING = "greedy"
+    path = f"Machine_Learning_Train/{METHOD}/TrainedModels/XGBoost/"
+    model_file = f"{path}XGBoost_booster_{METHOD}_{RANKING}.model"
+    scaler_file = f"{path}scaler_{METHOD}_{RANKING}.pkl"
+
+    greedy_ranking = ranking.greedy(distance_matrix_ranking, CHOSEN_COMPANY)
+    data_to_predict_on, distance_matrix_vrp = prepper.prep_greedy(input_df_modified_with_depot, CHOSEN_COMPANY,
+                                                                        CHOSEN_CANDIDATES, METHOD,
+                                                                        distance_matrix_ranking,
+                                                                        TRUCK_CAPACITY, greedy_ranking)
+
+    log_substep("Get data to predict on Greedy", substep_time)
 
     substep_time = time.time()
     # SUBSTEP Make prediction
-    predicted_df = predictor.predict_for_candidates(prediction_df)
-    log_substep("Make predictions", substep_time)
+    data_to_predict_on = data_to_predict_on.drop(columns=["chosen_candidate"])
+    predictor = ModelPredictor(model_file, scaler_file)
+    rankings = ranking.ranker_ml(data_to_predict_on, model_file, scaler_file, CHOSEN_CANDIDATES)
+
+    log_substep("Make predictions Greedy ML", substep_time)
+
+    substep_time = time.time()
+    # SUBSTEP Get prediction model XGBoost
+    RANKING = "bounding_circle"
+    path = f"Machine_Learning_Train/{METHOD}/TrainedModels/XGBoost/"
+    model_file = f"{path}XGBoost_booster_{METHOD}_{RANKING}.model"
+    scaler_file = f"{path}scaler_{METHOD}_{RANKING}.pkl"
+
+    bounding_ranking = ranking.bounding_circle(input_df, distance_matrix_ranking, CHOSEN_COMPANY)
+    data_to_predict_on, distance_matrix_vrp = prepper.prep_bounding_circle(input_df, input_df_modified,
+                                                                                 distance_matrix_ranking,
+                                                                                 TRUCK_CAPACITY, CHOSEN_COMPANY,
+                                                                                 CHOSEN_CANDIDATES, METHOD,
+                                                                                 bounding_ranking)
+
+    log_substep("Get data to predict on Bounding Circle", substep_time)
+
+    substep_time = time.time()
+    # SUBSTEP Make prediction
+    data_to_predict_on = data_to_predict_on.drop(columns=["chosen_candidate"])
+    predictor = ModelPredictor(model_file, scaler_file)
+    rankings = ranking.ranker_ml(data_to_predict_on, model_file, scaler_file, CHOSEN_CANDIDATES)
+
+    log_substep("Make predictions Bounding Circle", substep_time)
+
+    substep_time = time.time()
+    # SUBSTEP Get prediction model XGBoost
+    RANKING = "k_means"
+    path = f"Machine_Learning_Train/{METHOD}/TrainedModels/XGBoost/"
+    model_file = f"{path}XGBoost_booster_{METHOD}_{RANKING}.model"
+    scaler_file = f"{path}scaler_{METHOD}_{RANKING}.pkl"
+
+    k_means_ranking = ranking.k_means(input_df_clustering, input_df_modified, full_matrix, CHOSEN_COMPANY)
+    data_to_predict_on, distance_matrix_vrp = prepper.prep_k_means(input_df_clustering, input_df_modified,
+                                                                         distance_matrix_ranking, full_matrix,
+                                                                         TRUCK_CAPACITY,
+                                                                         CHOSEN_COMPANY, CHOSEN_CANDIDATES, METHOD,
+                                                                         k_means_ranking)
+
+
+    log_substep("Get data to predict on K-Means", substep_time)
+
+    substep_time = time.time()
+    # SUBSTEP Make prediction
+    data_to_predict_on = data_to_predict_on.drop(columns=["chosen_candidate"])
+    predictor = ModelPredictor(model_file, scaler_file)
+    rankings = ranking.ranker_ml(data_to_predict_on, model_file, scaler_file, CHOSEN_CANDIDATES)
+
+    log_substep("Make predictions K_Means", substep_time)
+
+    substep_time = time.time()
+    # SUBSTEP Get prediction model XGBoost
+    RANKING = "k_means"
+    path = f"Machine_Learning_Train/{METHOD}/TrainedModels/XGBoost/"
+    model_file = f"{path}XGBoost_booster_{METHOD}_{RANKING}.model"
+    scaler_file = f"{path}scaler_{METHOD}_{RANKING}.pkl"
+
+    dbscan_ranking = ranking.dbscan(input_df_clustering, full_matrix, CHOSEN_COMPANY)
+    data_to_predict_on, distance_matrix_vrp = prepper.prep_dbscan(input_df_clustering,
+                                                                        input_df_modified_with_depot,
+                                                                        distance_matrix_ranking, full_matrix,
+                                                                        TRUCK_CAPACITY,
+                                                                        CHOSEN_COMPANY, CHOSEN_CANDIDATES, METHOD,
+                                                                        dbscan_ranking)
+
+    log_substep("Get data to predict on DBScan", substep_time)
+
+    substep_time = time.time()
+    # SUBSTEP Make prediction
+    data_to_predict_on = data_to_predict_on.drop(columns=["chosen_candidate"])
+    #predictor = ModelPredictor(model_file, scaler_file)
+    #rankings = ranking.ranker_ml(data_to_predict_on, model_file, scaler_file, CHOSEN_CANDIDATES)
+
+    log_substep("Make predictions DBScan", substep_time)
+
+    substep_time = time.time()
+    # SUBSTEP Get prediction model XGBoost
+    RANKING = "all"
+    path = f"Machine_Learning_Train/{METHOD}/TrainedModels/XGBoost/"
+    model_file = f"{path}XGBoost_booster_{METHOD}_{RANKING}.model"
+    scaler_file = f"{path}scaler_{METHOD}_{RANKING}.pkl"
+
+    greedy_ranking = ranking.greedy(distance_matrix_ranking, CHOSEN_COMPANY)
+    bounding_ranking = ranking.bounding_circle(input_df, distance_matrix_ranking, CHOSEN_COMPANY)
+    k_means_ranking = ranking.k_means(input_df_clustering, input_df_modified, full_matrix, CHOSEN_COMPANY)
+    dbscan_ranking = ranking.dbscan(input_df_clustering, full_matrix, CHOSEN_COMPANY, 17, 2)
+
+    data_to_predict_on, distance_matrix_vrp = prepper.prep_all(input_df_clustering, input_df_modified,
+                                                                     input_df_modified_with_depot,
+                                                                     distance_matrix_ranking, full_matrix,
+                                                                     TRUCK_CAPACITY, CHOSEN_COMPANY,
+                                                                     CHOSEN_CANDIDATES, METHOD, greedy_ranking,
+                                                                     bounding_ranking,
+                                                                     k_means_ranking, dbscan_ranking)
+
+    log_substep("Get data to predict on Main ML Algorithm", substep_time)
+
+    substep_time = time.time()
+    # SUBSTEP Make prediction
+    #data_to_predict_on = data_to_predict_on.drop(columns=["chosen_candidate"])
+    predictor = ModelPredictor(model_file, scaler_file)
+    rankings = ranking.ranker_ml(data_to_predict_on, model_file, scaler_file, CHOSEN_CANDIDATES)
+
+    log_substep("Make predictions Main ML Algorithm", substep_time)
 
     log_step("Get candidate ranking (machine learning)", start_time)
 
@@ -124,7 +238,7 @@ if __name__ == "__main__":
     start_time = time.time()
     distance_matrix_vrp = distance_calc.calculate_distance_matrix(input_df_modified_with_depot,
                                                                   chosen_company=CHOSEN_COMPANY,
-                                                                  candidate_name=CHOSEN_CANDIDATE, method="osrm",
+                                                                  candidate_name=CHOSEN_CANDIDATE, method=METHOD,
                                                                   computed_distances_df=distance_matrix_ranking)
     log_step("Get full distance matrix", start_time)
 
@@ -155,8 +269,3 @@ if __name__ == "__main__":
     total_distance_collab, avg_distance_per_order_collab = vrp_solver.calculate_distance_per_order(routes=routes_collab,
                                                                                                    distance_matrix=distance_matrix_vrp)
     log_step("Solve VRP collaboration", start_time)
-
-    ########## Get expected gain
-    start_time = time.time()
-    predicted_df['Expected Gain'] = avg_distance_per_order_single - predicted_df['Predicted km per order']
-    log_step("Get expected gain", start_time)
